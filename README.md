@@ -4,7 +4,7 @@ Prototipo de aplicación educativa para explicar errores frecuentes de SQL y ETL
 
 Versión 0.2: integración opcional de Gemini Flash-Lite, recuperación local y
 controles de privacidad. El usuario confirma pruebas manuales SQL y ETL
-satisfactorias. La validación automática de release incluye 81 pruebas locales,
+satisfactorias. La validación automática de release incluye 82 pruebas locales,
 sin llamadas reales a Gemini. El despliegue Cloud se comprueba por separado.
 
 ## Funciones actuales
@@ -20,6 +20,13 @@ No se ejecutan consultas ni se guardan entradas o respuestas en archivos.
 integración opcional se documenta aquí y en `REVISION.md`.
 
 ## Ejecutar
+
+El repositorio conserva el devcontainer añadido previamente en GitHub. Su arranque
+usa `streamlit run app.py`, con las protecciones CORS y XSRF predeterminadas activas;
+no hay opciones que las deshabiliten. Se mantienen su imagen Python 3.11,
+extensiones, instalación de dependencias y puerto 8501. El entorno local y Cloud
+documentados abajo usan Python 3.12. No es necesario construir el devcontainer para
+ejecutar la aplicación, y su configuración no modifica los secretos de Cloud.
 
 Desde PowerShell, sitúate en la carpeta `DataFlow_AI` que contiene `app.py`.
 Para una instalación nueva, utiliza Python 3.12 (la versión usada para validar

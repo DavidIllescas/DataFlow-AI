@@ -708,3 +708,45 @@ realizan llamadas reales a Gemini ni operaciones destructivas. La actualización
 automática que Cloud pueda efectuar al seguir `main` no prueba la configuración
 del servicio ni autoriza llamadas Gemini adicionales. La comprobación operativa
 de la aplicación desplegada queda separada del resultado de GitHub.
+
+## Integración segura del devcontainer y resolución de la divergencia
+
+El primer push de release fue rechazado porque `origin/main` había añadido
+`3fe128a` (Added Dev Container Folder). El usuario autoriza integrar ese commit
+con la release local `d8c6aa5`, preservando ambos historiales y corrigiendo las
+opciones inseguras de desarrollo antes de publicar.
+
+Tras `git fetch origin`, la revisión confirma que el único archivo remoto nuevo
+es `.devcontainer/devcontainer.json`: imagen oficial de desarrollo Python 3.11,
+extensiones de Microsoft, apertura de README/app, instalación de dependencias,
+puerto 8501 y arranque de Streamlit. No se detectaron secretos, URLs con
+credenciales, rutas privadas o cambios ajenos a esa configuración. Sus comandos
+de instalación se revisaron como texto y no se ejecutaron ni se construyó el
+contenedor durante esta tarea.
+
+El merge normal se inició con `--no-commit --no-ff origin/main` y no produjo
+conflictos. Antes del commit se elimina del arranque únicamente
+`--server.enableCORS false --server.enableXsrfProtection false`; queda
+`streamlit run app.py`. Se conservan los demás ajustes legítimos. El resultado
+del merge incluye la corrección, las pruebas y la documentación: no se reescriben
+commits, no se descartan cambios y no se necesita force push.
+
+Se añade una prueba en `tests/test_deployment.py` para comprobar comando seguro,
+imagen y puerto conservados y opciones CORS/XSRF activas en Streamlit. El README
+documenta el devcontainer y actualiza la validación a **82 pruebas correctas**.
+`pip check` y `compileall` correctos. Una instancia nueva de Streamlit, con las
+protecciones activas, responde HTTP 200 en `/` y `/_stcore/health` (`ok`); se detiene
+únicamente el árbol de esa instancia temporal al finalizar.
+
+Se mantiene el diagnóstico desactivado con la configuración de producción
+versionada, Flash-Lite predeterminado y `analyzer.py` sin modificaciones. La
+revisión previa al commit examina el índice completo, las exclusiones de privados
+y el diff de seguridad. No se leen claves privadas del entorno ni Secrets, no se
+realizan llamadas reales a Gemini y no se cambia la configuración privada de Cloud.
+
+El nuevo commit es un merge con dos padres, que conserva `d8c6aa5` y `3fe128a`
+como ancestros. El resultado del push normal y la igualdad entre HEAD,
+`origin/main` y la referencia remota se verifican posteriormente en Git.
+Tras publicar queda revisar manualmente el arranque/logs del despliegue Cloud,
+modelo visible y diagnóstico desactivado; cualquier llamada Gemini adicional
+requiere autorización independiente.
