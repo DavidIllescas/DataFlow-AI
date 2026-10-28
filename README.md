@@ -4,8 +4,9 @@ Prototipo de aplicación educativa para explicar errores frecuentes de SQL y ETL
 
 Versión 0.2: integración opcional de Gemini Flash-Lite, recuperación local y
 controles de privacidad. El usuario confirma pruebas manuales SQL y ETL
-satisfactorias. La validación automática de release incluye 82 pruebas locales,
-sin llamadas reales a Gemini. El despliegue Cloud se comprueba por separado.
+satisfactorias. La validación automática actual incluye 105 pruebas locales,
+sin llamadas reales a Gemini. Esta actualización incorpora la protección de cuota
+descrita abajo; su activación en el despliegue Cloud se comprueba por separado.
 
 ## Funciones actuales
 - Entrada de consultas o mensajes de error ficticios.
@@ -466,10 +467,95 @@ El texto permanece temporalmente en la sesión y la respuesta visible puede copi
 por eso se admiten exclusivamente ejemplos ficticios, nunca consultas sensibles.
 
 Una casilla de consentimiento no es autenticación ni un límite de consumo por
-persona. La aplicación no incorpora cuentas ni cuotas individuales. Antes de abrir
+persona. La aplicación no incorpora cuentas; los límites técnicos por sesión e
+instancia se describen a continuación y no identifican a una persona. Antes de abrir
 Gemini a terceros, limita el acceso al despliegue cuando proceda y revisa los límites
 y la facturación del proyecto de Google; cada visitante puede consumir la cuota de
 la misma clave del servidor. El modo local sigue disponible sin enviar datos.
+
+### Protección de cuota Gemini: sesión y proceso
+
+El modo **Reglas locales** sigue seleccionado por defecto, ilimitado en número
+de análisis y ajeno a los contadores de Gemini. Conserva su validación de entrada
+de 4000 caracteres. El modo Gemini añade estos límites conservadores para una demo:
+
+| Variable pública de entorno | Predeterminado | Significado |
+| --- | ---: | --- |
+| `DATAFLOW_GEMINI_SESSION_LIMIT` | 3 | Intentos admitidos durante la sesión actual |
+| `DATAFLOW_GEMINI_COOLDOWN_SECONDS` | 30 | Segundos entre inicios de intentos de la misma sesión |
+| `DATAFLOW_GEMINI_GLOBAL_LIMIT` | 20 | Intentos totales compartidos por todas las sesiones del proceso |
+
+Son enteros no negativos. Cero en un límite de intentos deshabilita Gemini; cero
+en cooldown elimina esa espera. Un valor vacío, negativo o no entero bloquea
+Gemini con un mensaje saneado, pero permite seguir con el análisis local. No hay
+un valor especial «ilimitado» para Gemini. La cuota es de intentos, no de tokens,
+dinero ni garantía de coste cero dentro del plan de Google.
+
+Para configurar sin editar código, establece solo esas variables públicas antes
+de iniciar Streamlit, por ejemplo en PowerShell:
+
+```powershell
+$env:DATAFLOW_GEMINI_SESSION_LIMIT = '3'
+$env:DATAFLOW_GEMINI_COOLDOWN_SECONDS = '30'
+$env:DATAFLOW_GEMINI_GLOBAL_LIMIT = '20'
+.\.venv\Scripts\python.exe -m streamlit run app.py --server.address 127.0.0.1
+```
+
+En Community Cloud, tras autorizar la actualización, el propietario puede añadir
+estos parámetros no sensibles en el nivel raíz de **App settings → Secrets**,
+conservando la clave privada existente sin copiarla al chat ni al repositorio:
+
+```toml
+DATAFLOW_GEMINI_SESSION_LIMIT = 3
+DATAFLOW_GEMINI_COOLDOWN_SECONDS = 30
+DATAFLOW_GEMINI_GLOBAL_LIMIT = 20
+```
+
+Streamlit exporta los valores escalares raíz al entorno del servidor; el lector de
+límites solo consulta esos tres nombres públicos, nunca `GEMINI_API_KEY` ni el
+contenido de Secrets. No se cargan archivos `.env` automáticamente. Comprueba los
+límites mostrados en la interfaz al activar la nueva versión. Un reinicio para
+aplicar configuración también puede renovar el presupuesto en memoria.
+
+La entrada, el tipo y el modelo se validan antes de reservar. Si un límite ya
+bloquea, no se lee la clave ni se crea un cliente SDK. Tras resolver la clave, se
+recomprueba y reserva **atómicamente** el intento de sesión y el global bajo un
+lock compartido. Así otra sesión no puede utilizar simultáneamente el último
+hueco y causar un exceso. El lock se libera antes de llamar al SDK; no se mantiene
+durante una espera de red de hasta el timeout configurado.
+
+Un intento admitido cuenta aunque después haya timeout, error de API, respuesta
+inválida o fallo al crear el cliente. No se devuelve ese presupuesto, porque no
+siempre puede saberse si Google procesó la petición. Una entrada inválida, clave
+ausente, cooldown o límite ya alcanzado no suma intentos. Seleccionar Gemini,
+cambiar de modelo o marcar el consentimiento tampoco hace llamadas ni consume
+presupuesto. Se conservan un intento SDK, 60 segundos de timeout HTTP y Flash-Lite
+predeterminado, sin reintentos ni cambios automáticos de modelo.
+
+La interfaz explica el bloqueo y ofrece **Continuar con análisis local** sin otra
+llamada a Google. El cooldown no duerme ni bloquea la aplicación: informa del tiempo
+restante. Borrar el texto, cambiar ejemplos o cambiar a modo local no reinicia el
+consumo Gemini de la sesión ni el global. Abrir otra pestaña puede crear una sesión
+nueva y renovar su límite individual, pero comparte el presupuesto global del proceso.
+
+**Límite de esta protección:** el contador global vive únicamente en memoria del
+proceso Python de Streamlit. No es distribuido ni persistente, no es una cuota
+diaria y no tiene reinicio automático por tiempo. Puede reiniciarse con un reinicio,
+despliegue o recarga del proceso/módulo; cada réplica o proceso tiene otro contador.
+Cambiar un número de configuración no borra por sí solo el consumo ya registrado
+en un proceso que siga vivo. El objeto global guarda un entero, un lock y una
+referencia al reloj monotónico; no guarda sesiones, nombres, IP, consultas,
+respuestas, claves o datos personales. La sesión solo guarda su contador y la
+marca monotónica del último intento admitido.
+
+Para una protección durable entre despliegues o varias réplicas sería necesario
+un contador externo con operación atómica, ventanas bien definidas y, si se quieren
+cuotas por persona, autenticación. No se ha añadido almacenamiento externo ni
+ningún servicio con costes. El límite también es ajeno a la sonda CLI, otros
+programas y llamadas de otros proyectos que utilicen la misma clave. Antes de
+invitar estudiantes, revisa además acceso, cuotas y facturación en Google y confirma
+el comportamiento de la versión desplegada. El estado de publicación se comprueba
+en Git; el push no sustituye la validación operativa de Cloud.
 
 ## Preparar el repositorio de GitHub
 
@@ -487,6 +573,7 @@ DataFlow_AI/
 ├── app.py
 ├── analyzer.py
 ├── gemini_analyzer.py
+├── gemini_limits.py
 ├── gemini_connectivity_check.py
 ├── requirements.txt
 ├── requirements-local.lock.txt
@@ -501,6 +588,8 @@ DataFlow_AI/
     ├── test_app.py
     ├── test_deployment.py
     ├── test_gemini_analyzer.py
+    ├── test_gemini_limits.py
+    ├── test_app_limits.py
     ├── test_connectivity_cli.py
     └── test_app_gemini.py
 ```

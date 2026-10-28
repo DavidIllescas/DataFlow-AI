@@ -1,6 +1,7 @@
 import streamlit as st
 from analyzer import EXAMPLES, MAX_INPUT_CHARS, analyze_local
-from gemini_analyzer import TIMEOUT_MS, GeminiError, analyze_gemini, get_api_key, local_diagnostics_enabled, resolve_model
+from gemini_analyzer import TIMEOUT_MS, GeminiError, analyze_gemini, get_api_key, local_diagnostics_enabled, resolve_model, validate_gemini_input
+from gemini_limits import LimitConfigError, QuotaExceeded, SessionUsage, get_limiter, load_limits
 
 
 def load_example():
@@ -12,12 +13,28 @@ def revoke_permission():
     st.session_state['gemini_permission'] = False
     st.session_state.pop('gemini_error', None)
     st.session_state.pop('gemini_diagnostic', None)
+    st.session_state.pop('gemini_limit_error', None)
 
 
 def clear_input():
     st.session_state['input_text'] = ''
     st.session_state['example'] = 'Escribir mi propio texto'
     revoke_permission()
+
+
+def analyze_with_limits(text, kind, model):
+    validate_gemini_input(text, kind)
+    limits = load_limits()
+    usage = st.session_state['gemini_usage']
+    limiter = get_limiter()
+    limiter.check(usage, limits)
+    api_key = get_api_key(st.secrets)
+    if not api_key:
+        raise GeminiError('Falta configurar GEMINI_API_KEY en los secretos o en el entorno.', model=model)
+    # Otra sesión puede consumir el último intento mientras se lee configuración:
+    # reserve vuelve a comprobar todo bajo el mismo lock, sin hacer aún ninguna red.
+    limiter.reserve(usage, limits)
+    return analyze_gemini(text, kind, api_key=api_key, model=model)
 
 
 def show_local_result(result):
@@ -59,12 +76,19 @@ selected_model = None
 if engine == 'Reglas locales':
     st.info('Modo demostración: análisis por reglas locales, sin IA generativa ni conexión a bases de datos.')
 else:
+    if 'gemini_usage' not in st.session_state:
+        st.session_state['gemini_usage'] = SessionUsage()
     try:
         selected_model = resolve_model()
         st.info(f'Análisis inteligente con {selected_model}. Solo se envía el texto al pulsar Analizar con tu autorización.')
     except GeminiError as exc:
         st.error(str(exc))
     st.caption(f'Tiempo de espera de red configurado: {TIMEOUT_MS // 1000} s. Un solo intento, sin reintentos ni cambios automáticos de modelo.')
+    try:
+        limits = load_limits()
+        st.caption(f'Límite de sesión: {limits.session_limit} intentos. Espera entre intentos: {limits.cooldown_seconds} s. Presupuesto compartido: {limits.global_limit} intentos por proceso; no es una cuota diaria.')
+    except LimitConfigError as exc:
+        st.warning(str(exc))
 st.selectbox('Ejemplo opcional', ['Escribir mi propio texto'] + list(EXAMPLES), key='example', on_change=load_example)
 text = st.text_area('Pega tu consulta o mensaje de error', key='input_text', height=175, max_chars=MAX_INPUT_CHARS, placeholder='Ej.: SELEC nombre FROM empleados;', on_change=revoke_permission)
 permission = False
@@ -74,6 +98,7 @@ if engine == 'Gemini (opcional)':
 if st.button('Analizar', type='primary', use_container_width=True):
     st.session_state.pop('gemini_error', None)
     st.session_state.pop('gemini_diagnostic', None)
+    st.session_state.pop('gemini_limit_error', None)
     try:
         if engine == 'Reglas locales':
             show_local_result(analyze_local(text, mode))
@@ -83,8 +108,10 @@ if st.button('Analizar', type='primary', use_container_width=True):
             st.warning('Corrige la configuración del modelo o utiliza Reglas locales. No se ha enviado el texto.')
         else:
             with st.spinner('Consultando Gemini…'):
-                result = analyze_gemini(text, mode, api_key=get_api_key(st.secrets), model=selected_model)
+                result = analyze_with_limits(text, mode, selected_model)
             show_gemini_result(result)
+    except (QuotaExceeded, LimitConfigError) as exc:
+        st.session_state['gemini_limit_error'] = str(exc)
     except ValueError as exc:
         st.error(str(exc))
     except GeminiError as exc:
@@ -93,18 +120,24 @@ if st.button('Analizar', type='primary', use_container_width=True):
         st.session_state['gemini_error'] = str(exc)
         if diagnostic_mode:
             st.session_state['gemini_diagnostic'] = exc.diagnostic
-if engine == 'Gemini (opcional)' and st.session_state.get('gemini_error'):
-    st.error(st.session_state['gemini_error'])
+if engine == 'Gemini (opcional)' and (st.session_state.get('gemini_error') or st.session_state.get('gemini_limit_error')):
+    if st.session_state.get('gemini_limit_error'):
+        st.warning(st.session_state['gemini_limit_error'])
+        st.info('No se ha hecho ninguna llamada a Gemini para este intento bloqueado. El análisis local sigue disponible sin límite de uso.')
+    else:
+        st.error(st.session_state['gemini_error'])
+        st.info('El análisis de Gemini ha fallado. Puedes analizar el texto actual con reglas locales, sin enviarlo de nuevo a Google.')
     if diagnostic_mode and st.session_state.get('gemini_diagnostic'):
         with st.expander('Diagnóstico técnico local (saneado)'):
             st.json(st.session_state['gemini_diagnostic'])
-    st.info('El análisis de Gemini ha fallado. Puedes analizar el texto actual con reglas locales, sin enviarlo de nuevo a Google.')
     if st.button('Continuar con análisis local'):
         try:
             show_local_result(analyze_local(text, mode))
         except ValueError as exc:
             st.error(str(exc))
 st.button('Borrar texto y resultado', on_click=clear_input)
+if engine == 'Gemini (opcional)':
+    st.caption(f'Intentos Gemini consumidos en esta sesión: {st.session_state["gemini_usage"].used}. Borrar el texto no reinicia el contador.')
 st.divider()
 with st.expander('Acerca del proyecto'):
     st.write('Prototipo educativo: reglas locales de la versión 0.1 y análisis opcional con Gemini. Las sugerencias requieren revisión humana.')

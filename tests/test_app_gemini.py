@@ -12,12 +12,17 @@ from google.genai import errors
 from streamlit.testing.v1 import AppTest
 
 from test_gemini_analyzer import EXAMPLE_RESULT
+from gemini_limits import RequestLimiter
 
 
 class GeminiAppTests(unittest.TestCase):
     def setUp(self):
         environment = self.enterContext(patch.dict(os.environ))
         environment.pop('GEMINI_MODEL', None)
+        for name in ('DATAFLOW_GEMINI_SESSION_LIMIT', 'DATAFLOW_GEMINI_GLOBAL_LIMIT', 'DATAFLOW_GEMINI_COOLDOWN_SECONDS'):
+            environment.pop(name, None)
+        self.limiter = RequestLimiter()
+        self.enterContext(patch('gemini_limits.get_limiter', return_value=self.limiter))
         self.factory = self.enterContext(patch('google.genai.Client'))
         self.client = self.factory.return_value.__enter__.return_value
         self.client.models.generate_content.return_value = SimpleNamespace(text=json.dumps(EXAMPLE_RESULT))
@@ -162,6 +167,7 @@ class GeminiAppTests(unittest.TestCase):
         self.assertEqual('Escribir mi propio texto', self.app.selectbox[0].value)
         self.assertFalse(self.app.checkbox[0].value)
         self.assertEqual(0, len(self.app.subheader))
+        self.assertEqual(1, self.app.session_state['gemini_usage'].used)
         self.assertNotIn('gemini_error', self.app.session_state)
         self.assertNotIn('gemini_diagnostic', self.app.session_state)
         self.client.models.generate_content.assert_called_once()

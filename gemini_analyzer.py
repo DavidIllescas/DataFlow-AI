@@ -149,14 +149,19 @@ def _validate_response(raw):
         raise GeminiError('Gemini devolvió una respuesta con formato no válido o incompleto.') from None
 
 
-def analyze_gemini(query, kind='Consulta SQL', *, api_key, model=None):
-    # Validar antes de importar el SDK o crear un cliente.
+def validate_gemini_input(query, kind='Consulta SQL'):
+    """Validación compartida con la interfaz antes de reservar cuota."""
     if len(query) > MAX_INPUT_CHARS:
         raise ValueError(f'El texto supera el límite de {MAX_INPUT_CHARS} caracteres.')
     if not query.strip():
         raise ValueError('Introduce una consulta SQL o un mensaje de error.')
     if kind not in ('Consulta SQL', 'Mensaje de error ETL'):
         raise ValueError('Selecciona un tipo de entrada válido.')
+
+
+def analyze_gemini(query, kind='Consulta SQL', *, api_key, model=None):
+    # Validar antes de importar el SDK o crear un cliente.
+    validate_gemini_input(query, kind)
     selected_model = resolve_model(model)
     thinking = {'thinking_config': {'thinking_level': 'low'}} if selected_model == ALTERNATIVE_MODEL else {}
     response = _generate_content(

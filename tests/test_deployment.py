@@ -50,6 +50,7 @@ class DeploymentIgnoreTests(unittest.TestCase):
             'private.pem', 'private.key', 'certificate.pfx',
         ]
         public = [
+            'gemini_limits.py', 'tests/test_gemini_limits.py', 'tests/test_app_limits.py',
             '.devcontainer/devcontainer.json',
             'app.py', 'analyzer.py', 'gemini_analyzer.py', 'requirements.txt', '.streamlit/config.toml',
             'gemini_connectivity_check.py', 'tests/test_connectivity_cli.py',

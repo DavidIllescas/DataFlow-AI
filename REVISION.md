@@ -750,3 +750,138 @@ como ancestros. El resultado del push normal y la igualdad entre HEAD,
 Tras publicar queda revisar manualmente el arranque/logs del despliegue Cloud,
 modelo visible y diagnóstico desactivado; cualquier llamada Gemini adicional
 requiere autorización independiente.
+
+## Protección de cuota Gemini por sesión y proceso — cambio local sin publicar
+
+El usuario informa de que v0.2 está desplegada y solicita limitar el uso antes de
+invitar a estudiantes. Antes de implementar se explicó que un contador en memoria
+solo protege un proceso y puede reiniciarse al desplegar, reiniciar o recargar;
+no es distribuido ni persistente. No se incorpora almacenamiento externo.
+
+### Política y configuración
+
+Nuevo `gemini_limits.py`, sin dependencias adicionales: presupuesto predeterminado
+de **3 intentos admitidos por sesión**, **30 segundos entre inicios de intentos de
+una sesión** y **20 intentos totales por proceso**. Configuración mediante los
+nombres públicos `DATAFLOW_GEMINI_SESSION_LIMIT`,
+`DATAFLOW_GEMINI_COOLDOWN_SECONDS` y `DATAFLOW_GEMINI_GLOBAL_LIMIT` del entorno.
+Se admiten enteros no negativos; un límite de intentos cero deshabilita Gemini y
+cooldown cero elimina la espera. Una configuración inválida bloquea Gemini sin
+reflejar valores, y deja disponible el análisis local.
+
+El objeto compartido pertenece al módulo importado en el proceso de Streamlit:
+solo un entero de consumo, un lock y la referencia al reloj monotónico. No hay
+directorio de sesiones, identificadores, nombres, IP, consultas, respuestas o
+credenciales. Cada sesión mantiene por separado un entero y el instante monotónico
+de su último intento. Los reruns o un cambio de valores de configuración no crean
+otro contador global. Las réplicas, reinicios y recargas de proceso/módulo sí pueden
+tener o crear un contador distinto. No es una cuota diaria ni garantiza coste cero.
+
+### Reserva y bloqueo antes del SDK
+
+`app.py` valida la entrada y configuración y comprueba los límites antes de obtener
+la clave. Si ya están agotados, no lee la clave ni crea un cliente. Después vuelve
+a comprobar todos los límites y reserva ambos contadores atómicamente bajo el
+mismo lock, evitando que dos sesiones reserven el último hueco. Se libera el lock
+antes de acceder al SDK/red. El cooldown solo muestra la espera restante, sin sleep.
+
+Los intentos admitidos no se reembolsan si hay timeout, error de API, respuesta
+inválida o fallo de cliente, porque puede no conocerse si Google procesó la petición.
+Entradas inválidas, clave ausente, límites/cooldown bloqueados, selección de modo
+y consentimiento sin pulsar Analizar no suman consumo. Borrar texto o cambiar
+de modo no reinicia contadores. Una sesión nueva renueva su presupuesto individual
+pero comparte el límite global. Se informa del bloqueo y se ofrece el botón local
+sin ninguna petición adicional a Gemini.
+
+El modo local sigue seleccionado por defecto y sin límite de número de análisis;
+conserva la validación original de entrada. `analyzer.py` no cambia. Se conserva
+Flash-Lite predeterminado, un intento SDK y timeout HTTP de 60 segundos. El
+diagnóstico local sigue desactivado en la configuración versionada de producción.
+
+### Archivos y validación
+
+- `gemini_limits.py`: configuración, estado numérico de sesión, contador global
+  sincronizado, precomprobación y reserva atómica.
+- `app.py`: puerta previa a Gemini, mensajes, contadores visibles y recuperación
+  local ante límite o configuración inválida.
+- `gemini_analyzer.py`: extrae la misma validación de entrada a una función
+  compartida para ejecutarla antes de reservar; no modifica las reglas locales,
+  la petición, el modelo ni el transporte del SDK.
+- Nuevos `tests/test_gemini_limits.py` y `tests/test_app_limits.py`: concurrencia,
+  límites, tiempos con reloj simulado, sesiones nuevas, errores, falta de clave,
+  recuperación local y carrera entre precomprobación y reserva.
+- `tests/test_app_gemini.py` aísla el contador de pruebas y comprueba que Borrar
+  conserva el consumo; `tests/test_deployment.py` incluye los nuevos archivos.
+- `AGENTS.md`, `README.md` y `REVISION.md`: política y limitaciones explícitas.
+
+**105 pruebas correctas**, incluyendo las anteriores de diagnóstico de producción,
+CORS/XSRF y aislamiento de datos. Carreras con hasta 24 hilos respetan exactamente
+el máximo global; las de una misma sesión respetan cuota y cooldown. Las pruebas
+de interfaz interceptan cliente y clave, por lo que no llaman a Google ni leen
+credenciales reales. `pip check` sin incompatibilidades y `compileall` correcto.
+`requirements.txt` y el snapshot de dependencias no necesitan cambios.
+
+### Limitaciones operativas y pendientes
+
+La protección se aplica al flujo Gemini de la interfaz, no a la sonda CLI u otros
+programas con la misma clave. No identifica personas ni impide que un estudiante
+cree otra sesión. La protección compartida es el presupuesto global del proceso,
+que no debe confundirse con una cuota distribuida, persistente, de tokens o de Google.
+Un límite durable entre reinicios o réplicas exigiría un almacenamiento externo
+atómico; cuotas por persona requerirían identidad. No se añaden servicios o costes.
+
+El README documenta variables de entorno y parámetros públicos raíz de Cloud que
+Streamlit exporta al entorno, sin copiar valores privados. No se modifica la
+configuración privada de Cloud. Antes de invitar estudiantes, publicar esta
+actualización solo tras autorización, comprobar sus límites en el despliegue y
+revisar también acceso/cuotas/facturación del proyecto de Google. Estos cambios
+siguen locales: no se han creado commits, hecho push ni realizado llamadas reales
+a Gemini. No protegen el despliegue existente hasta que se actualice.
+
+## Validación para publicar los límites de uso y protección de sesión
+
+El usuario autoriza el commit `Add Gemini usage limits and session protection` y
+un push normal al repositorio existente. Tras `git fetch origin`, `main` y
+`origin/main` coinciden en el historial publicado; no hay commits divergentes ni
+conflictos antes de esta actualización. No se reescribe historial.
+
+Se revisaron `AGENTS.md`, la implementación, configuración y pruebas. Los valores
+predeterminados siguen siendo 3 intentos por sesión, 30 segundos de cooldown entre
+inicios y 20 intentos por proceso. La reserva de ambos presupuestos se realiza bajo
+un lock y se libera antes de la llamada HTTP; se comprueba otra vez después de la
+precomprobación para evitar carreras. No se reembolsan intentos admitidos fallidos.
+
+El singleton del módulo es compartido por las sesiones de un mismo proceso y
+contiene solo consumo numérico, lock y referencia al reloj; no registra directorio
+de usuarios o sesiones, contenido, claves ni datos personales. Las sesiones guardan
+contador y tiempo monotónico. La falta de persistencia/distribución, los reinicios
+y el alcance exclusivo al flujo web están documentados en código y README.
+
+El analizador local sigue intacto, ilimitado y seleccionado por defecto. Se
+conservan `gemini-3.5-flash-lite`, timeout HTTP de 60 segundos y un intento SDK.
+La prueba de configuración de producción confirma diagnóstico local desactivado,
+y las protecciones CORS/XSRF continúan activas. No se cambian dependencias.
+
+**105 pruebas correctas**, incluyendo límites, concurrencia entre sesiones y dentro
+de una sesión, nuevo inicio de sesión frente al límite global, cooldown, manejo de
+errores y recuperación local sin llamada adicional. `pip check` y `compileall`
+correctos. Una nueva instancia temporal de Streamlit responde HTTP 200 en `/` y
+`/_stcore/health` (`ok`), con CORS/XSRF activos, y se detiene al finalizar.
+
+La revisión exacta del índice y de `.gitignore` es condición previa al commit:
+no deben incluirse credenciales, archivos `.env`, secretos Streamlit, entornos,
+consultas confidenciales o rutas privadas. Los tests usan exclusivamente valores
+ficticios; no se lee ninguna clave real ni se accede a Secrets de Cloud.
+
+El commit reúne `gemini_limits.py`, integración de interfaz, validación de entrada
+compartida, pruebas y documentación. Su hash, push normal y sincronización se
+verifican en Git después de registrarlo. No se realizan llamadas reales a Gemini.
+El estado del despliegue Cloud y su configuración privada no se modifican desde
+esta tarea; un push puede desencadenar la actualización automática de la aplicación.
+
+Antes de invitar estudiantes, comprobar en Cloud que está desplegado el nuevo
+commit, que aparecen límites 3/30/20 (o los valores públicos configurados), modelo
+Lite y modo local predeterminado, y que no aparece diagnóstico técnico. Una
+validación real de consumo/cooldown y bloqueo en varias sesiones requiere una
+autorización independiente y consume el presupuesto de demo. Un reinicio/despliegue
+puede renovar ese presupuesto: no es un límite diario ni una cuota de Google.
