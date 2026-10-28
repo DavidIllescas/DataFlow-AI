@@ -1,0 +1,45 @@
+# Entornos y cachés de Python
+.venv/
+venv/
+env/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Temporales, registros y archivos del sistema/editor
+*.tmp
+*.temp
+*.bak
+*.swp
+*.swo
+*~
+*.log
+~$*
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+
+# Credenciales: conservar .streamlit/config.toml
+.env
+.env.*
+!.env.example
+!.env.template
+**/.streamlit/secrets.toml
+.aws/
+.ssh/
+credentials.json
+credentials-*.json
+secrets.json
+secrets-*.json
+token.json
+tokens.json
+service-account*.json
+*.pem
+*.key
+*.p12
+*.pfx
