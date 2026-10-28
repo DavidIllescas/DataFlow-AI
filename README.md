@@ -5,15 +5,27 @@ Prototipo de aplicación educativa para explicar errores frecuentes de SQL y ETL
 Versión 0.3: interfaz de estudio SQL/ETL con
 tema oscuro, editor y consola de resultados. Conserva la integración opcional de
 Gemini Flash-Lite, la recuperación local y los límites de uso de v0.2. Las pruebas
-manuales SQL/ETL comunicadas por el usuario corresponden a v0.2. La batería actual
-incluye 113 pruebas locales, sin llamadas reales a Gemini. El usuario ha confirmado
+manuales SQL/ETL comunicadas por el usuario corresponden a v0.2. El release v0.3
+se publicó tras superar 113 pruebas; la batería local actual incluye 121, con ocho
+regresiones posteriores del diagnóstico 503 incluidas en este cierre documental. Estas pruebas
+no hacen llamadas reales a Gemini. El usuario ha confirmado
 los seis aspectos de la revisión manual de la interfaz v0.3. Esta actualización
 conserva las funcionalidades de v0.2 y no modifica los Secrets de Cloud.
 
 Repositorio oficial: [DavidIllescas/DataFlow-AI](https://github.com/DavidIllescas/DataFlow-AI).
 Aplicación pública: [DataFlow AI Studio](https://dataflow-ai-davidillescas.streamlit.app/).
-La publicación en GitHub y la validación del despliegue Cloud son comprobaciones
-distintas: confirmar la versión activa con los pasos de abajo después del push.
+El usuario confirma que la aplicación pública funciona con v0.3. La publicación
+en GitHub y la verificación técnica del despliegue son comprobaciones distintas;
+el agente no ha inspeccionado el contenedor remoto durante el cierre documental.
+
+## Hito académico de las semanas 2 y 3
+
+El [documento de autoprueba y validación](docs/hito_semana_3.md) reúne los casos
+SQL/ETL, resultados y limitaciones del proyecto, distinguiendo comprobaciones
+manuales y pruebas automatizadas. Explica el origen del rediseño de v0.2 a v0.3
+en una evaluación propia de usabilidad.
+El cierre incorpora también la sonda administrativa offline y sus pruebas del
+diagnóstico 503. No añade llamadas automáticas ni controles de diagnóstico públicos.
 
 ## Interfaz Studio v0.3
 
@@ -97,6 +109,116 @@ petición real con esta interfaz. Para desplegar, incluir también
 
 Las pruebas y el arranque locales no certifican el despliegue remoto. Estos pasos
 quedan a cargo del propietario después de que Cloud actualice desde GitHub.
+
+## Diagnosticar HTTP 503 local frente a Cloud sin repetir solicitudes
+
+HTTP 503 indica indisponibilidad temporal; HTTP 429 corresponde a límites de
+cuota/solicitudes. Un 503 aislado no demuestra una clave incorrecta, un modelo
+incompatible, un esquema inválido ni un defecto de Linux. El éxito local anterior
+no garantiza disponibilidad en otro instante o infraestructura. Véase la
+[referencia oficial de errores](https://ai.google.dev/gemini-api/docs/api-errors).
+
+### Configuración efectiva y petición
+
+`resolve_model` utiliza **argumento explícito > `GEMINI_MODEL` del entorno >
+`gemini-3.5-flash-lite`**. No consulta directamente `st.secrets`. Streamlit exporta
+los valores escalares de nivel superior de Secrets al entorno al cargarlos; en la
+versión fijada esos valores pueden reemplazar un valor de entorno previo.
+`GEMINI_MODEL` dentro de una sección TOML anidada no se exporta. Un proceso CLI
+independiente no carga Secrets de Streamlit ni hereda retroactivamente el entorno
+de otro proceso. Véase [Secrets de Streamlit](https://docs.streamlit.io/develop/concepts/connections/secrets-management).
+Esta prioridad del modelo es distinta de la lectura de credenciales, que prioriza
+`st.secrets` y admite entorno como alternativa; no se inspeccionan valores reales.
+
+La interfaz muestra `selected_model` y pasa ese mismo valor al analizador; no se
+resuelve otra configuración entre la etiqueta y la llamada. Se valida contra una
+lista permitida y no hay cambios automáticos de modelo. El valor mostrado permite
+al administrador comparar local/Cloud sin acceder a Secrets.
+
+El análisis usa `client.models.generate_content`, instrucciones de sistema y datos
+no confiables en JSON, MIME `application/json`, esquema de siete campos,
+`max_output_tokens=4096`, sin herramientas ni llamadas de función. Flash-Lite no
+recibe `thinking_config`; la alternativa explícita 3.8 utiliza nivel bajo.
+El cliente fuerza Developer API (`enterprise=False`) y
+`https://generativelanguage.googleapis.com`. `google-genai==2.23.0` usa `/v1beta/`
+por defecto. HTTPX recibe 60 segundos a partir de `timeout=60000` ms;
+`HttpRetryOptions(attempts=1)` evita reintentos y se desactivan redirecciones.
+El timeout HTTP no es un plazo total de toda la operación.
+
+El código no selecciona endpoints por Windows/Linux. `streamlit==1.66.1`,
+`google-genai==2.23.0` y `httpx==0.28.1` están fijados. Persisten posibles diferencias
+de Python, dependencias transitivas, proxy/certificados, salida de red, región,
+commit desplegado y carga de Google. HTTPX puede usar el entorno de proxy y
+certificados: [configuración oficial del SDK](https://github.com/googleapis/python-genai#proxy).
+No se ha verificado el runtime privado de Cloud; estas posibilidades son hipótesis.
+
+### Sonda administrativa sin endpoint público
+
+`gemini_connectivity_check.py` sigue siendo una herramienta de consola separada.
+No está importada por `app.py` ni conectada a botones, rutas, query parameters,
+sesiones de estudiantes o tareas de arranque. Los flags no autentican: se requiere
+una consola privada a la que solo acceda el administrador del alojamiento.
+
+Comparación offline, sin obtener el valor de ninguna clave ni hacer peticiones:
+
+```bash
+python gemini_connectivity_check.py --runtime-info
+```
+
+En Windows utiliza `.\.venv\Scripts\python.exe` en lugar de `python`. La salida
+incluye modelo permitido y fuente (explícito/entorno/predeterminado), sistema
+genérico, Python, versiones de tres paquetes, endpoint configurado, política de
+versión API, timeout e intentos. Solo muestra booleanos para presencia de variables
+de proxy/certificados/transporte y de la clave en el entorno. No muestra URLs de
+proxy, certificados, rutas, hostnames, Secrets, credenciales, consultas o respuestas.
+La fuente «environment» no identifica si Streamlit la obtuvo de Secrets.
+Los metadatos describen configuración local, no prueban conectividad.
+
+**Limitación de Community Cloud:** la [gestión oficial](https://docs.streamlit.io/deploy/streamlit-community-cloud/manage-your-app)
+documenta logs, ajustes y reinicios; no se presupone una shell privada dentro del
+contenedor. GitHub Codespaces es otro entorno y no demuestra la conectividad del
+proceso público. Si no hay una consola administrativa privada en el runtime real,
+esta sonda no se puede ejecutar allí bajo estas restricciones. Usar los logs
+privados de instalación para contrastar versiones y el modelo visible, sin abrir
+Secrets ni habilitar `DATAFLOW_LOCAL_DIAGNOSTICS` en Cloud. No añadir un botón
+«admin» protegido solo por un flag, una URL o Session State. Una futura consola
+web requeriría autenticación y autorización del lado servidor, fuera de este cambio.
+
+Solo tras autorización independiente y si existe consola privada con la clave ya
+disponible en su entorno, una única sonda real se realizaría con:
+
+```bash
+python gemini_connectivity_check.py --runtime-info --model gemini-3.5-flash-lite --execute-once --confirm-cost
+```
+
+**No se ha ejecutado.** Ambos indicadores son obligatorios; no escribir una clave
+en el comando, copiarla del panel ni imprimirla. La sonda realiza un POST con el
+texto fijo «Responde únicamente OK.», sin esquema JSON ni herramientas; omite el
+contenido generado y no sigue redirecciones ni reintenta. Una respuesta HTTP válida
+no certifica el análisis estructurado. La ejecución CLI tiene su propio proceso:
+no comparte los contadores en memoria de la aplicación. Reservar manualmente un
+intento del presupuesto administrativo; no usar la sonda para eludir límites ni
+presentar ese contador como una cuota distribuida. No se modifica el limitador.
+
+### Estrategia opcional de reintento: propuesta, no implementada
+
+Mantener ahora un intento y ofrecer el analizador local. Si se autoriza una
+ampliación posterior, el máximo sería **dos POST en total**, con opción del servidor
+desactivada por defecto y aviso/consentimiento que incluya el intento adicional.
+Reintentar solo 500/503; excluir 400/401/403/404, cuotas 429, errores de formato y
+timeouts ambiguos que podrían seguir procesándose. No cambiar de modelo.
+
+Antes de cada POST se debe reservar atómicamente un nuevo intento en el limitador
+actual, tanto de sesión como global; un fallo consume el intento. Backoff base
+exponencial de 1 s, acotado, más jitter aleatorio entre 0 y 1 s; con un único
+reintento solo se usa el primer escalón. La espera efectiva debe respetar además
+el cooldown restante (30 s por defecto), sin mantener locks durante espera/red.
+Si el presupuesto o el tiempo máximo de la operación impiden el segundo intento,
+detenerse y ofrecer modo local. Proponer un plazo total máximo de 155 s para dos
+lecturas de hasta 60 s y espera/cooldown; requeriría implementar un deadline real,
+ya que los timeouts HTTP actuales no garantizan ese plazo. Por latencia, el botón
+actual de nuevo análisis tras el cooldown sigue siendo la opción más simple.
+No habilitar reintentos internos del SDK: ocultarían intentos al limitador.
 
 ## Funciones actuales
 - Entrada de consultas o mensajes de error ficticios.
@@ -433,7 +555,7 @@ privadamente y la cuota revisada:
    esta autorización; un timeout no garantiza ausencia de consumo.
 7. Detén la instancia con `Ctrl+C`. Registra modelo, duración aproximada, éxito
    del formato y valoración de esos criterios. El texto exacto puede variar y un
-   JSON válido no garantiza exactitud. No publiques aún la versión 0.2.
+   JSON válido no garantiza exactitud. Cualquier publicación requiere autorización previa.
 
 ### Segundo error: diagnóstico local seguro
 
@@ -684,6 +806,7 @@ DataFlow_AI/
     ├── test_app_limits.py
     ├── test_connectivity_cli.py
     ├── test_clean_imports.py
+    ├── test_cloud_configuration.py
     ├── test_studio_ui.py
     └── test_app_gemini.py
 ```
@@ -743,8 +866,9 @@ Antes de publicar v0.3:
    comprobarse con Git; estas instrucciones no configuran secretos ni despliegan.
 6. Tras el despliegue autorizado, comprobar arranque, modelo visible, borrado de
    entrada, modo local y una llamada Gemini únicamente si se autoriza por separado.
-   La validación real en Linux/Cloud y la prueba con navegadores independientes
-   quedan pendientes. No se garantiza que las pruebas locales cubran la plataforma.
+   El usuario confirma el funcionamiento público de v0.3 y su revisión manual;
+   la inspección técnica del runtime Linux/Cloud por el agente sigue pendiente.
+   Las pruebas locales no certifican todos los aspectos de la plataforma.
 
 Para una instalación nueva, los pasos generales son:
 
@@ -763,15 +887,15 @@ Para una instalación nueva, los pasos generales son:
 6. Abre la URL pública y verifica: entrada vacía con mensaje legible; los tres
    ejemplos con sus resultados; y `SELECT nombre FROM empleados;` con revisión
    general y advertencia de incertidumbre. Prueba también el modo ETL.
-7. Si la entrega lo requiere, copia la URL pública en la ficha de Blackboard.
 
 Si subes la carpeta exterior en vez de usar la estructura recomendada, el archivo
 principal será `DataFlow_AI/app.py`. Para evitar ambigüedades con las rutas de
 configuración, utiliza preferentemente la carpeta interior como raíz.
 
 Las comprobaciones automatizadas se ejecutan localmente en Windows con Python
-3.12; la compatibilidad Linux se ha revisado en el código y la configuración,
-pero debe confirmarse con el despliegue real. Para esta integración solo se han
+3.12; la compatibilidad Linux se ha revisado en el código y la configuración.
+El usuario confirma que v0.3 funciona en Cloud; el agente no ha inspeccionado su
+runtime privado durante este cierre. Para esta integración solo se han
 consultado documentos oficiales y descargado dependencias con autorización.
 Las comprobaciones del agente no realizan llamadas reales a Gemini. El resultado
 del push no sustituye la verificación de arranque y configuración en Cloud.

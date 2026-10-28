@@ -4,7 +4,7 @@ Fecha: 28 de octubre de 2026.
 
 Las secciones siguientes conservan el historial de preparación; sus referencias
 a comprobaciones pendientes o cambios aún locales describen aquel momento.
-La sección final registra el rediseño local v0.3 y prevalece sobre los
+La sección final registra el cierre documental del hito y prevalece sobre los
 estados históricos. El estado de publicación y hash se consultan en Git.
 
 ## Documentación y alcance
@@ -1044,3 +1044,142 @@ otro directorio, verificando también la carga del CSS y del ejemplo ETL sin dep
 del directorio de trabajo. Sin cambios en los tres módulos de análisis/límites ni
 en dependencias. Las pruebas mantienen CORS/XSRF activos y diagnósticos desactivados
 con configuración de producción; la configuración privada de Cloud no se consulta.
+
+## Investigación de HTTP 503 en Cloud después de v0.3
+
+El usuario comunica HTTP 503 en producción y éxito previo de Flash-Lite en local.
+Esto confirma dos resultados en momentos/entornos distintos; no identifica una
+causa específica de Cloud. No se consultaron Secrets privados ni se hicieron
+peticiones a Gemini para esta investigación. La documentación oficial distingue
+503 (servicio temporalmente indisponible) de 429 (cuota/solicitudes):
+https://ai.google.dev/gemini-api/docs/api-errors.
+
+Se revisaron AGENTS, interfaz, analizador, limitador, configuración, SDK instalado
+y pruebas. No se encontró una rama por sistema operativo ni un fallback de modelo.
+El análisis conserva `generate_content`, esquema JSON de siete campos, 4096 tokens,
+sin herramientas, timeout 60000 ms y un intento. Endpoint Developer API explícito,
+versión efectiva `/v1beta/` en el SDK fijado; no se siguen redirecciones.
+
+Selección comprobada: argumento explícito > entorno GEMINI_MODEL > Flash-Lite.
+Streamlit puede promover Secrets de nivel superior al entorno y reemplazar un
+valor previo; una sección anidada no se promueve. Este comportamiento se prueba
+con una instancia aislada, valores sintéticos y parseo de archivos bloqueado.
+La interfaz envía el modelo que muestra, sin leer Secrets para resolverlo. No se
+ha confirmado el modelo/configuración efectiva de la instancia remota en esta tarea.
+
+Cambio mínimo: solo la sonda de consola `gemini_connectivity_check.py` recibe
+`--runtime-info`, offline y sin lecturas de claves/Secrets. Metadatos en lista
+cerrada: modelo permitido, fuente, sistema genérico, Python, versiones saneadas,
+configuración fija de transporte y booleanos de nombres de entorno presentes.
+No se muestra texto de excepciones técnicas sin sanear, respuestas, URLs de proxy,
+hostnames, rutas o cabeceras. Por defecto no hace red; mantiene doble opt-in para
+una petición real, que no se ejecuta en esta tarea. No se añade un panel, endpoint,
+botón o tarea de arranque accesible a estudiantes. App y tres módulos de análisis
+y límites no cambian, ni tampoco dependencias o configuración de seguridad.
+
+La CLI depende del control de acceso de una consola privada del alojamiento; sus
+flags son consentimiento, no autenticación. No se puede afirmar que Community
+Cloud ofrezca esa consola. Sin ella, una sonda en el proceso Cloud requiere otro
+mecanismo administrativo autenticado, que no se implementa aquí. Codespaces no es
+el entorno de producción. Un proceso CLI no comparte presupuesto en memoria con
+la app; su único intento debe contabilizarse como prueba administrativa separada.
+
+`tests/test_cloud_configuration.py` añade ocho regresiones para promoción de
+configuración, selección y saneamiento, modo offline, errores 503 y ausencia de
+reintentos con el SDK real y MockTransport, incluyendo variables Vertex activas.
+Se comprueba endpoint, versión API, timeout HTTPX y un solo POST sin usar red real.
+No se afirma haber ejecutado las pruebas en Linux: las verificaciones locales se
+realizan en Windows. Las versiones/transitivas, proxy/certificados, salida de red,
+región, commit y carga del proveedor en Cloud siguen siendo hipótesis pendientes.
+
+README documenta el procedimiento offline y una futura sonda real autorizada,
+limitaciones administrativas y una propuesta de máximo un reintento adicional
+solo para 500/503, con backoff, jitter, cooldown y reserva por cada intento. La
+propuesta no se implementa. Se recomienda mantener el intento único y comparar
+primero modelo visible, commit y versiones sin consumir cuota. No hay commits ni
+push de esta investigación.
+
+Resultado: **121 pruebas correctas**, `pip check` sin incompatibilidades y
+compilación correcta. Un servidor temporal nuevo respondió HTTP 200 y salud `ok`;
+se cerró su árbol al terminar. Se ejecutó únicamente `--runtime-info` sin flags de
+red: confirmó Python 3.12.14 en Windows, Streamlit 1.66.1, google-genai 2.23.0,
+httpx 0.28.1 y modelo predeterminado Flash-Lite, con `request_executed=false`.
+Esta CLI offline no consulta Secrets, por lo que su booleano de entorno no prueba
+presencia/ausencia de credenciales de Streamlit ni equivalencia de claves con Cloud.
+No se han comprobado paquetes ni conectividad en el contenedor remoto.
+
+## Cierre documental del hito de las semanas 2 y 3
+
+Se revisaron AGENTS, especificación original v0.1, README, este registro y los
+cambios locales del diagnóstico 503. Se conserva ese trabajo sin modificar la
+sonda ni sus pruebas en esta tarea. La comparación con Git confirma que interfaz,
+analizadores, límites, CSS, configuración y dependencias permanecen intactos.
+
+Nuevo `docs/hito_semana_3.md`: objetivo, pruebas, resultados, problema detectado,
+mejora implementada, verificación y conclusión. Se centra en las autopruebas y la
+validación de DataFlow AI Studio, distinguiendo las comprobaciones manuales
+comunicadas por el usuario de la ejecución automatizada local. Aclara que el
+rediseño de v0.2 a v0.3 surge de una evaluación propia de usabilidad.
+
+El usuario confirma v0.3 pública y seis aspectos de la revisión manual correctos.
+Esto actualiza los estados históricos que dejaban pendiente dicha confirmación;
+no implica una inspección remota del contenedor por el agente. El release publicado
+superó 113 pruebas; las ocho regresiones locales posteriores del diagnóstico 503
+elevan la batería actual a **121 pruebas correctas**, ejecutadas de nuevo para este
+cierre, sin fallos ni omisiones y con Gemini simulado. La regresión de importación
+limpia sigue incluida. No se repiten pruebas reales de Gemini ni el arranque HTTP
+de tareas anteriores como si se hubieran realizado nuevamente en este cierre.
+
+README enlaza el informe académico y diferencia resultados del release frente al
+árbol local, actualiza el estado comunicado de Cloud y retira una instrucción
+obsoleta de no publicar v0.2. El detalle técnico del 503 queda en README y su
+historial en este registro, sin duplicarlo en el informe académico. Se mantiene
+la limitación 503 y recuperación explícita local, sin afirmar que se resolvió su
+causa ni que se implementaron reintentos.
+
+Se revisa el documento para excluir credenciales, información confidencial, datos
+personales innecesarios y rutas privadas. Este cierre solo modifica documentación;
+no lee Secrets, no llama a Gemini, no crea commits ni hace push. El informe y los
+cambios locales previos siguen pendientes de revisión y autorización de publicación.
+
+### Ajuste del alcance documental antes de publicar
+
+El informe de las semanas 2 y 3 queda limitado a DataFlow AI Studio: autopruebas
+SQL/ETL, validación, mejora propia de usabilidad y limitación HTTP 503 con
+recuperación local. Se retiran actividades ajenas al proyecto y referencias a
+entregas en la plataforma académica. README conserva un enlace breve al informe;
+el detalle técnico permanece en sus secciones existentes y el historial en este
+registro. Se mantienen separados los resultados manuales y automatizados, las
+113 pruebas del release y las 121 locales registradas posteriormente.
+Este ajuste solo modifica los tres documentos; no se ejecutan nuevas pruebas
+funcionales, no se modifican código, configuración o tests y no se publica nada.
+
+## Publicación documental final autorizada — v0.3
+
+Se revisan e incluyen cinco archivos: README, este registro,
+`docs/hito_semana_3.md`, `gemini_connectivity_check.py` y
+`tests/test_cloud_configuration.py`. La sonda y sus ocho regresiones son pertinentes
+para comparar la configuración del diagnóstico 503 sin consumir cuota; mantienen
+la ejecución offline predeterminada, metadatos saneados y doble opt-in para una
+futura petición real autorizada. No están conectadas a la interfaz ni a un endpoint
+público. No se presupone acceso a shell privada en Community Cloud.
+
+La documentación contiene exclusivamente el proyecto, separa comprobaciones
+manuales comunicadas por el usuario de pruebas automatizadas locales y atribuye
+el rediseño a una evaluación propia de usabilidad. Se actualizan los avisos de
+publicación pendiente para este cierre; los apartados anteriores son históricos.
+
+Verificaciones repetidas antes de publicar: **121 pruebas correctas**, sin fallos
+ni omisiones; incluyen importación real en proceso limpio. `pip check` sin
+incompatibilidades y compilación correcta. Streamlit temporal responde HTTP 200
+y salud `ok`; se cierra su árbol al finalizar. Interfaz, CSS, analizadores,
+límites, dependencias y configuración de seguridad no presentan cambios.
+
+Tras `git fetch origin` no hay divergencias antes del commit. Se revisan el índice,
+las exclusiones y la ausencia de contenido privado antes de registrar
+`Document DataFlow AI Studio usability testing and improvements` y realizar el
+push normal autorizado. El hash y la sincronización final se verifican en Git.
+No se hacen llamadas reales a Gemini ni se consultan Secrets o configuración
+privada de Cloud. La disponibilidad de Gemini y el despliegue remoto no quedan
+certificados por estas comprobaciones locales; HTTP 503 sigue siendo una
+limitación conocida con recuperación explícita mediante reglas locales.
