@@ -1,12 +1,102 @@
-# DataFlow AI — v0.2
+# DataFlow AI Studio — v0.3
 
 Prototipo de aplicación educativa para explicar errores frecuentes de SQL y ETL en español.
 
-Versión 0.2: integración opcional de Gemini Flash-Lite, recuperación local y
-controles de privacidad. El usuario confirma pruebas manuales SQL y ETL
-satisfactorias. La validación automática actual incluye 105 pruebas locales,
-sin llamadas reales a Gemini. Esta actualización incorpora la protección de cuota
-descrita abajo; su activación en el despliegue Cloud se comprueba por separado.
+Versión 0.3: interfaz de estudio SQL/ETL con
+tema oscuro, editor y consola de resultados. Conserva la integración opcional de
+Gemini Flash-Lite, la recuperación local y los límites de uso de v0.2. Las pruebas
+manuales SQL/ETL comunicadas por el usuario corresponden a v0.2. La batería actual
+incluye 113 pruebas locales, sin llamadas reales a Gemini. El usuario ha confirmado
+los seis aspectos de la revisión manual de la interfaz v0.3. Esta actualización
+conserva las funcionalidades de v0.2 y no modifica los Secrets de Cloud.
+
+Repositorio oficial: [DavidIllescas/DataFlow-AI](https://github.com/DavidIllescas/DataFlow-AI).
+Aplicación pública: [DataFlow AI Studio](https://dataflow-ai-davidillescas.streamlit.app/).
+La publicación en GitHub y la validación del despliegue Cloud son comprobaciones
+distintas: confirmar la versión activa con los pasos de abajo después del push.
+
+## Interfaz Studio v0.3
+
+- Encabezado compacto **DataFlow AI Studio / SQL Intelligence Studio** y navegación
+  lateral a **Análisis**, **Ejemplos** y **Proyecto**. Los enlaces desplazan a
+  secciones de la misma página; no cambian de sesión ni envían el texto.
+- Editor monoespaciado a la izquierda y consola de resultados a la derecha en
+  escritorio. Streamlit apila las columnas en pantallas estrechas y permite
+  plegar la barra lateral. Los controles mantienen etiquetas visibles.
+- Modo **Reglas locales** seleccionado inicialmente, ilimitado. **Gemini
+  (opcional)** muestra el modelo efectivo, timeout de 60 segundos, un intento y
+  límites configurados: inicialmente 3 intentos/sesión, 30 segundos de cooldown y
+  20 intentos/proceso. Conserva consentimiento, mensajes de fallo y recuperación local.
+- Resultados organizados en diagnóstico, observaciones, hipótesis, correcciones y
+  recomendaciones. El modo local conserva su salida original y avisa expresamente
+  de que no produce observaciones verificadas ni hipótesis contextuales.
+- Selector rápido y biblioteca desplegable con tres ejemplos existentes y un
+  ejemplo ETL ficticio. **Cargar** copia el ejemplo al editor y selecciona SQL/ETL;
+  revoca el consentimiento y conserva el presupuesto consumido. No llama a Google.
+- **Borrar texto y resultado** mantiene su función y no reinicia los contadores.
+  Los resultados siguen siendo transitorios: cambiar widgets provoca un rerun;
+  no se añade historial ni caché de consultas/respuestas.
+
+El tema predeterminado se configura en `.streamlit/config.toml`: azul noche
+`#0B1220`, superficies `#111D30`, azul `#3B82F6` y texto `#F8FAFC`. Los bordes
+`#334155`, el editor y los detalles del estudio están en `assets/studio.css`.
+El botón principal usa un azul más oscuro para mejorar el contraste del texto.
+El CSS utiliza clases propias y clases documentadas `st-key-*`, sin selectores
+Emotion/data-testid, JavaScript, fuentes remotas ni nuevas dependencias. El HTML
+decorativo es estático; entrada y salida de Gemini nunca se interpolan en él.
+Se conservan los mensajes nativos con texto, etiquetas y foco visible de teclado.
+
+### Revisar el diseño localmente
+
+Desde la raíz interior `DataFlow_AI`, con el entorno instalado:
+
+```powershell
+.\.venv\Scripts\python.exe -m streamlit run app.py --server.address 127.0.0.1 --server.port 8505
+```
+
+Abre <http://127.0.0.1:8505>. Si ya está arrancado en ese puerto, utiliza la
+instancia existente. Para comprobar la interfaz sin consumir cuota:
+
+1. Mantén **Reglas locales**. Carga cada ejemplo, analiza y comprueba la consola;
+   prueba también texto vacío, texto propio y el borrado.
+2. Usa los enlaces laterales, carga **Conversión ETL** desde la biblioteca y
+   comprueba que aparece en el editor como **Mensaje de error ETL**.
+3. Selecciona **Gemini (opcional)** para comprobar modelo, límites y aviso de envío.
+   Deja el consentimiento desmarcado y no envíes ninguna petición real.
+4. Revisa a 1440 px y a 390 px de ancho: columnas, apilado, barra lateral plegable,
+   ajuste de texto y ausencia de controles cortados. Navega con Tab/Shift+Tab y
+   comprueba foco, etiquetas y mensajes sin depender únicamente del color.
+
+Limitaciones: el editor nativo no tiene autocompletado, números de línea ni
+resaltado de sintaxis editable. El tema está diseñado para el modo oscuro
+predeterminado; un tema elegido previamente en el navegador puede requerir volver
+a ese tema desde Streamlit. El usuario ha confirmado la revisión manual de seis
+aspectos de la interfaz; la automatización visual de Edge no pudo verificar su URL.
+AppTest comprueba los flujos, no el diseño en píxeles. El agente no ha ejecutado una
+petición real con esta interfaz. Para desplegar, incluir también
+`assets/studio.css`; mantener secretos excluidos y diagnósticos desactivados.
+
+### Verificar v0.3 en Streamlit Community Cloud después del push
+
+1. En el panel de la aplicación existente, comprobar repositorio
+   `DavidIllescas/DataFlow-AI`, rama `main` y archivo principal `app.py`. Consultar
+   los logs de actualización y confirmar el commit publicado si el panel lo muestra.
+   No copiar Secrets ni registros que puedan contener credenciales.
+2. Abrir la URL pública en una sesión nueva y comprobar **DataFlow AI Studio**,
+   **SQL Intelligence Studio**, etiqueta **v0.3**, tema oscuro, navegación lateral
+   y editor/consola. Si sigue apareciendo la versión anterior, recargar; si persiste,
+   revisar los logs y reiniciar la aplicación desde su panel sin modificar Secrets.
+3. Mantener **Reglas locales**: probar entrada vacía, ejemplos SQL y ETL, análisis
+   y borrado. Comprobar el diseño en escritorio/móvil y navegación por teclado.
+4. Seleccionar Gemini solo para verificar modelo `gemini-3.5-flash-lite`, avisos,
+   consentimiento y límites 3/30/20 (o configuración pública explícita). No autorizar
+   el envío ni efectuar una petición real como parte de esta comprobación.
+5. Confirmar ausencia del diagnóstico técnico. Un despliegue puede reiniciar el
+   contador global en memoria; no es persistente ni distribuido. Verificar cuotas
+   mediante llamadas reales requiere autorización independiente.
+
+Las pruebas y el arranque locales no certifican el despliegue remoto. Estos pasos
+quedan a cargo del propietario después de que Cloud actualice desde GitHub.
 
 ## Funciones actuales
 - Entrada de consultas o mensajes de error ficticios.
@@ -583,6 +673,8 @@ DataFlow_AI/
 ├── REVISION.md
 ├── examples/
 │   └── error_etl_ficticio.txt
+├── assets/
+│   └── studio.css
 └── tests/
     ├── test_analyzer.py
     ├── test_app.py
@@ -591,6 +683,8 @@ DataFlow_AI/
     ├── test_gemini_limits.py
     ├── test_app_limits.py
     ├── test_connectivity_cli.py
+    ├── test_clean_imports.py
+    ├── test_studio_ui.py
     └── test_app_gemini.py
 ```
 
@@ -606,8 +700,9 @@ DataFlow_AI/
    excluidos. `.streamlit/config.toml` debe incluirse. Los archivos `.env.example`
    y `.env.template`, si los creas, solo deben contener valores de ejemplo.
 5. Prepara los archivos con `git add .`, revisa `git diff --cached --stat` y
-   `git diff --cached`, y crea el commit con
-   `git commit -m "Prepara DataFlow AI 0.1 para Streamlit Community Cloud"`.
+   `git diff --cached`, y crea el commit usando
+   un mensaje de commit que describa la versión revisada. No ejecutar estos pasos
+   durante la revisión local de v0.3 sin autorizar su publicación.
    `.gitignore` no deja de seguir archivos que ya estuvieran versionados:
    comprueba `git ls-files` si partes de un repositorio existente.
 6. Cuando decidas publicarlo, crea un repositorio vacío en GitHub, sin añadir
@@ -618,7 +713,7 @@ DataFlow_AI/
 
 ## Desplegar en Streamlit Community Cloud
 
-Se utiliza el repositorio existente de DataFlow AI. La publicación de v0.2 en
+Se utiliza el repositorio existente de DataFlow AI. La publicación de v0.3 en
 GitHub y la verificación del despliegue Cloud son operaciones distintas; si Cloud
 sigue `main`, un push puede actualizar la aplicación automáticamente. La lectura de secretos está
 comprobada con valores ficticios y la excepción real de archivo ausente de
@@ -627,14 +722,14 @@ falta el archivo o la entrada. No se imprimen valores. La configuración en Clou
 queda a cargo del propietario, según la
 [guía oficial de Secrets](https://docs.streamlit.io/deploy/streamlit-community-cloud/deploy-your-app/secrets-management).
 
-Antes de publicar v0.2:
+Antes de publicar v0.3:
 
 1. Revisar el diff y la documentación y ejecutar las pruebas automatizadas.
    Las pruebas manuales SQL y ETL con las instrucciones refinadas ya han sido
    confirmadas como satisfactorias por el usuario. El agente no hace llamadas
    reales a Gemini como parte de la publicación.
 2. Mantener `.venv`, `.env`, credenciales y `.streamlit/secrets.toml` excluidos;
-   incluir `.streamlit/config.toml`, código, pruebas y el ejemplo ficticio.
+   incluir `.streamlit/config.toml`, `assets/studio.css`, código, pruebas y el ejemplo ficticio.
 3. Revisar acceso de usuarios, cuota y facturación. Configurar o conservar la
    entrada privada `GEMINI_API_KEY` en **App settings → Secrets**, sin copiarla
    al repositorio o al chat. El entorno es una alternativa admitida por el código,

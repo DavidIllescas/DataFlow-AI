@@ -1,10 +1,10 @@
-# Registro de revisiones de DataFlow AI — v0.2
+# Registro de revisiones de DataFlow AI Studio — v0.3
 
 Fecha: 28 de octubre de 2026.
 
 Las secciones siguientes conservan el historial de preparación; sus referencias
 a comprobaciones pendientes o cambios aún locales describen aquel momento.
-La sección final registra la validación de release 0.2 y prevalece sobre los
+La sección final registra el rediseño local v0.3 y prevalece sobre los
 estados históricos. El estado de publicación y hash se consultan en Git.
 
 ## Documentación y alcance
@@ -885,3 +885,162 @@ Lite y modo local predeterminado, y que no aparece diagnóstico técnico. Una
 validación real de consumo/cooldown y bloqueo en varias sesiones requiere una
 autorización independiente y consume el presupuesto de demo. Un reinicio/despliegue
 puede renovar ese presupuesto: no es un límite diario ni una cuota de Google.
+
+## ImportError de validate_gemini_input comunicado desde Cloud
+
+El usuario comunica `ImportError: cannot import name 'validate_gemini_input' from
+'gemini_analyzer'` en `/mount/src/dataflow-ai/gemini_analyzer.py`. Se revisaron
+AGENTS, `app.py`, `gemini_analyzer.py`, `gemini_limits.py` y sus dependencias.
+
+Tras `git fetch origin`, local y remoto coinciden en
+`ec963c0bef2bbfdf1c29ec2e5c0cc9e005d8b033`, sin divergencia. Tanto las fuentes
+locales como el blob publicado contienen `validate_gemini_input` a nivel de módulo.
+El historial confirma que se añadió en ese mismo commit, extrayendo sin eliminar
+la validación que antes estaba dentro de `analyze_gemini`. Comprueba longitud
+original máxima de 4000 caracteres, texto no vacío tras strip y tipo SQL/ETL válido.
+`app.py` la importa correctamente y la llama antes de obtener clave, reservar
+presupuesto y acceder al SDK. No hay otro símbolo local importado que falte.
+
+No se reproduce la ausencia de la función en las fuentes publicadas. No se crea
+un stub, no se omiten validaciones, no se cambian imports válidos ni se modifica
+código de producción para ocultar el error. Tampoco se cambia el modelo, las cuotas,
+el analizador local o las dependencias.
+
+Se añade únicamente `tests/test_clean_imports.py`: un proceso Python nuevo con
+`-I`, directorio de bytecode temporal y `-B` importa `gemini_analyzer` y después
+`app`, verifica el archivo de origen y todos los símbolos locales que importa la
+interfaz. Prueba además la validación con texto vacío, exceso original de longitud,
+tipo no permitido y límites válidos; no basta con que el símbolo sea invocable.
+Se bloquea la conexión de sockets y se sustituye el acceso a secretos/clave por
+guardas que fallan si se utilizan. El arranque local no importa el SDK Gemini.
+No se vuelca stderr del subproceso para evitar exponer datos de su entorno.
+
+Resultado: **106 pruebas correctas**, `pip check` sin incompatibilidades y
+`compileall` correcto. Un proceso Streamlit nuevo con bytecode aislado responde
+HTTP 200 en `/` y `/_stcore/health` (`ok`); se detiene su árbol al terminar.
+No se llama a Gemini ni se leen o muestran valores de API keys. Los nuevos archivos
+de prueba/documentación no contienen credenciales ni rutas privadas fijas.
+
+**Causa del estado de Cloud pendiente de confirmación.** Una versión desplegada
+distinta, actualización incompleta o módulo antiguo conservado en el proceso
+podrían explicar el error: el módulo anterior a `ec963c0` no exportaba el helper.
+Es una hipótesis, no una causa demostrada de esta instancia. Se ha solicitado
+únicamente el hash que muestra Cloud y si hubo reinicio completo, sin Secrets ni
+logs que puedan contener credenciales.
+
+Para verificarlo, comprobar repositorio/rama/archivo principal y el commit activo
+en Cloud, y realizar un reinicio completo del proceso desde su panel antes de
+probar otra importación. No pulsar Analizar ni repetir sondas de Gemini para esta
+comprobación de arranque. Si persiste con `ec963c0` tras reinicio, se necesita la
+traza de importación saneada y evidencia del archivo desplegado antes de proponer
+una corrección funcional. Esta tarea no modifica la configuración privada de Cloud.
+
+Según la restricción del usuario, **no se crea el commit solicitado ni se hace
+push mientras no pueda confirmarse una corrección del fallo observado**. El código
+publicado ya contiene la función; la nueva regresión y este informe quedan locales.
+
+## v0.3 — DataFlow AI Studio: rediseño y preparación de publicación
+
+Se revisaron las instrucciones de AGENTS, especificación, README, interfaz,
+analizadores, límites y pruebas antes del rediseño. Se conservan los cambios
+locales anteriores, incluida la regresión de importación aislada. La fase inicial
+quedó local; posteriormente el usuario confirmó seis aspectos de la interfaz y
+autorizó el commit de release y un push normal a `origin/main` tras las comprobaciones.
+
+### Interfaz y archivos
+
+- `app.py`: identidad compacta DataFlow AI Studio / SQL Intelligence Studio;
+  navegación lateral mediante anclas a análisis, ejemplos y proyecto; editor y
+  consola en columnas nativas, con apilado de Streamlit en anchos pequeños.
+  Se mantienen etiquetas, controles de entrada, selección Local/Gemini, modelo
+  efectivo, consentimiento, límites visibles, borrado y recuperación local.
+- La consola diferencia diagnóstico, observaciones, hipótesis, correcciones y
+  recomendaciones. Las explicaciones/sugerencias locales conservan su contenido;
+  los nuevos apartados aclaran que ese modo no verifica hechos ni genera hipótesis.
+  El modelo sigue mostrándose como texto plano; no se interpola texto del usuario
+  ni del modelo en HTML. Los resultados no se almacenan en Session State ni cachés.
+- Biblioteca desplegable: conserva los tres ejemplos locales y añade acceso desde
+  la interfaz al archivo ETL ficticio existente. Cargar un ejemplo actualiza el
+  texto y tipo; revoca consentimiento sin reiniciar presupuesto ni llamar al SDK.
+- `.streamlit/config.toml`: tema oscuro azul noche, superficies azul oscuro, azul
+  eléctrico y texto claro. No se alteran CORS, XSRF, red ni diagnósticos.
+- `assets/studio.css`: estilo estático acotado a clases propias y `st-key-*`, editor
+  monoespaciado, bordes discretos, foco visible y reglas para pantallas estrechas.
+  Sin JavaScript, recursos externos, selectores Emotion/data-testid ni dependencias
+  nuevas. No se ocultan controles de Streamlit ni sus protecciones.
+- Pruebas de interfaz existentes: identificación de widgets mediante claves
+  semánticas en lugar de índices que dependían del orden anterior de los botones.
+  `tests/test_studio_ui.py` añade siete comprobaciones: estructura/navegación,
+  carga de todos los ejemplos y diagnósticos locales originales, consentimiento
+  y presupuesto, borrado, entrada HTML no interpolada, secciones locales y tema.
+  `tests/test_deployment.py` comprueba que CSS y nuevas pruebas no quedan excluidos.
+- `README.md`: versión 0.3, guía del estudio, revisión local sin cuota, archivos
+  necesarios para despliegue y limitaciones. Este registro conserva el historial.
+
+### Verificación y seguridad
+
+**113 pruebas automatizadas correctas**, incluidos importación en proceso Python
+limpio, errores del SDK con mocks, concurrencia, aislamiento y límites. `pip check`
+sin incompatibilidades. Servidor Streamlit real en loopback, puerto 8505: raíz
+HTTP 200 y `/_stcore/health` responde `ok`. AppTest ejecuta los flujos completos.
+
+`analyzer.py`, `gemini_analyzer.py`, `gemini_limits.py` y `requirements.txt`
+permanecen sin cambios. Se mantienen Flash-Lite, timeout de 60 s, un intento,
+presupuestos 3/30/20 configurables y modo local predeterminado ilimitado.
+Diagnóstico técnico desactivado por defecto y restringido a loopback; pruebas de
+despliegue verifican que un flag residual no lo habilita en Cloud. Se revisan
+exclusiones y archivos modificados sin abrir secretos ni leer valores de claves.
+La revisión inicial no realizó llamadas reales a Gemini, cambios de credenciales,
+commits, push ni despliegue.
+
+### Limitaciones e historial de revisión visual
+
+La revisión visual con Edge quedó bloqueada: la herramienta de Computer Use no
+pudo verificar con suficiente confianza la URL actual para aplicar su política.
+Se detuvo la automatización del navegador; no se afirma una comprobación visual
+de escritorio/móvil por parte del agente. Posteriormente el usuario confirmó
+que los seis aspectos de la revisión manual funcionaban correctamente.
+AppTest verifica funcionalidad, no geometría ni contraste renderizado.
+
+El editor nativo no incluye autocompletado, números de línea o resaltado editable.
+El CSS está diseñado para el tema oscuro predeterminado. Los reruns siguen
+retirando resultados transitorios; no se añade historial sensible. El límite
+global continúa siendo en memoria por proceso, no distribuido ni persistente.
+Una futura prueba visual con resultado real Gemini necesita autorización propia;
+los flujos Gemini del rediseño se verifican únicamente con mocks.
+
+### Comprobaciones de publicación autorizada de v0.3
+
+Tras `git fetch origin`, `main` y `origin/main` coinciden sin commits pendientes
+en ninguna dirección antes de preparar el release. Se mantiene el historial sin
+rebase, descartes ni force push. El commit autorizado se titula
+`Release DataFlow AI Studio v0.3: redesigned interface`.
+
+Se retira únicamente la etiqueta visual PREVIEW LOCAL del encabezado en favor de
+VERSIÓN v0.3. README incorpora las URLs oficiales, confirmación manual del usuario,
+diferencias respecto a v0.2 y pasos para verificar el despliegue automático.
+El CSS y el ejemplo ETL se resuelven con `Path(__file__).resolve().parent` y nombres
+con mayúsculas/minúsculas coincidentes; ambos recursos se incluyen en el repositorio.
+No se requieren recursos privados de Windows ni descargas externas para el diseño.
+
+Se verifica de nuevo la batería completa, `pip check`, compilación Python y un
+arranque temporal con salud HTTP. Se conserva la prueba de importación real en
+proceso limpio que comprueba `validate_gemini_input`, su validación efectiva y todos
+los símbolos locales importados por app, bloqueando red y acceso a secretos.
+La revisión del índice debe incluir únicamente código, CSS, configuración pública,
+pruebas y documentación, sin credenciales, .env, entornos virtuales ni Secrets.
+
+El hash, resultado del push y sincronización final se comunican desde Git tras
+publicar; no se incrusta un hash autorreferente en este documento. La validación
+remota de Streamlit Cloud queda pendiente del procedimiento de README: el push
+puede iniciar un despliegue automático, pero no certifica su arranque ni su versión.
+No se realizan llamadas reales a Gemini ni se leen o modifican valores de claves.
+
+Resultado de esta revisión de publicación: **113 pruebas correctas**, sin omisiones
+ni fallos; `pip check` sin incompatibilidades y `compileall` correcto. Un proceso
+Streamlit temporal nuevo respondió HTTP 200 en la raíz y `ok` en salud; se cerró
+únicamente su árbol de procesos al terminar. La prueba aislada ejecuta app desde
+otro directorio, verificando también la carga del CSS y del ejemplo ETL sin depender
+del directorio de trabajo. Sin cambios en los tres módulos de análisis/límites ni
+en dependencias. Las pruebas mantienen CORS/XSRF activos y diagnósticos desactivados
+con configuración de producción; la configuración privada de Cloud no se consulta.

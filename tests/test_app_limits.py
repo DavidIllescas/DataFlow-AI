@@ -31,15 +31,15 @@ class AppLimitTests(unittest.TestCase):
 
     def new_session(self):
         app = AppTest.from_file(str(Path(__file__).resolve().parents[1] / 'app.py')).run()
-        self.assertEqual('Reglas locales', app.radio[1].value)
-        app.radio[1].set_value('Gemini (opcional)').run()
-        app.text_area[0].input('SELECT importe / 0 FROM ventas;').run()
-        app.checkbox[0].check().run()
+        self.assertEqual('Reglas locales', app.radio(key='engine').value)
+        app.radio(key='engine').set_value('Gemini (opcional)').run()
+        app.text_area(key='input_text').input('SELECT importe / 0 FROM ventas;').run()
+        app.checkbox(key='gemini_permission').check().run()
         return app
 
     def click(self, app=None):
         target = self.app if app is None else app
-        target.button[0].click().run()
+        target.button(key='analyze').click().run()
         self.assertFalse(target.exception)
 
     def test_session_limit_blocks_before_key_or_sdk_and_local_fallback_works(self):
@@ -49,7 +49,7 @@ class AppLimitTests(unittest.TestCase):
         self.assertTrue(any('límite de intentos' in item.value for item in self.app.warning))
         self.assertEqual(2, self.key.call_count)
         self.assertEqual(2, self.client.models.generate_content.call_count)
-        self.app.button[1].click().run()
+        self.app.button(key='use_local').click().run()
         self.assertIn('división por cero', self.app.subheader[0].value)
         self.assertEqual(2, self.client.models.generate_content.call_count)
 
@@ -95,8 +95,8 @@ class AppLimitTests(unittest.TestCase):
         self.assertEqual(0, self.app.session_state['gemini_usage'].used)
 
     def test_invalid_input_does_not_read_key_or_consume_budget(self):
-        self.app.text_area[0].input('   ').run()
-        self.app.checkbox[0].check().run()
+        self.app.text_area(key='input_text').input('   ').run()
+        self.app.checkbox(key='gemini_permission').check().run()
         self.click()
         self.assertIn('Introduce una consulta', self.app.error[0].value)
         self.key.assert_not_called()
@@ -108,7 +108,7 @@ class AppLimitTests(unittest.TestCase):
             self.click()
             self.assertTrue(any('configuración de límites' in item.value for item in self.app.warning))
             self.assertFalse(any('private-test-detail' in item.value for item in self.app.warning))
-            self.app.button[1].click().run()
+            self.app.button(key='use_local').click().run()
             self.assertIn('división por cero', self.app.subheader[0].value)
         self.key.assert_not_called()
         self.factory.assert_not_called()
@@ -117,15 +117,15 @@ class AppLimitTests(unittest.TestCase):
         self.click()
         next(item for item in self.app.button if item.label == 'Borrar texto y resultado').click().run()
         self.assertEqual(1, self.app.session_state['gemini_usage'].used)
-        self.app.text_area[0].input('SELECT importe / 0 FROM ventas;').run()
-        self.app.checkbox[0].check().run()
+        self.app.text_area(key='input_text').input('SELECT importe / 0 FROM ventas;').run()
+        self.app.checkbox(key='gemini_permission').check().run()
         self.click()
         self.click()
         self.assertEqual(2, self.client.models.generate_content.call_count)
 
     def test_local_mode_is_unlimited_even_when_gemini_is_disabled(self):
         with patch.dict(os.environ, {'DATAFLOW_GEMINI_GLOBAL_LIMIT': '0', 'DATAFLOW_GEMINI_SESSION_LIMIT': '0'}):
-            self.app.radio[1].set_value('Reglas locales').run()
+            self.app.radio(key='engine').set_value('Reglas locales').run()
             for _ in range(8):
                 self.click()
                 self.assertIn('división por cero', self.app.subheader[0].value)
