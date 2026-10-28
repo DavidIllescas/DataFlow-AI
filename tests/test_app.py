@@ -1,6 +1,8 @@
 """Pruebas del flujo de entrada y análisis, sin navegador ni servicios externos."""
 from pathlib import Path
 import unittest
+import os
+from unittest.mock import patch
 
 from streamlit.testing.v1 import AppTest
 
@@ -9,12 +11,22 @@ from analyzer import EXAMPLES
 
 class AppTests(unittest.TestCase):
     def setUp(self):
+        # Cualquier intento de usar Gemini desde el modo local hace fallar el test.
+        client = self.enterContext(patch('google.genai.Client', side_effect=AssertionError('Red prohibida en tests')))
+        self.addCleanup(client.assert_not_called)
         self.app = AppTest.from_file(str(Path(__file__).resolve().parents[1] / 'app.py')).run()
 
     def test_empty_input_shows_friendly_error(self):
         self.app.button[0].click().run()
         self.assertFalse(self.app.exception)
         self.assertIn('Introduce una consulta', self.app.error[0].value)
+
+    def test_local_mode_works_with_invalid_gemini_model_configuration(self):
+        with patch.dict(os.environ, {'GEMINI_MODEL': 'private-test-detail'}):
+            self.app.text_area[0].input('SELECT importe / 0 FROM ventas;').run()
+            self.app.button[0].click().run()
+        self.assertFalse(self.app.exception)
+        self.assertIn('división por cero', self.app.subheader[0].value)
 
     def test_examples_load_in_both_modes(self):
         for mode in ('Consulta SQL', 'Mensaje de error ETL'):

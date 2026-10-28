@@ -1,0 +1,7 @@
+EJEMPLO TOTALMENTE FICTICIO — sin datos personales ni credenciales.
+Proceso: cargar un CSV de demostración.
+Paso: convertir el campo importe a un número decimal.
+Registro de prueba: importe="N/D"; unidades="3".
+Mensaje: conversión no válida de "N/D" a número decimal.
+Motor SQL y herramienta ETL: no especificados.
+No se ha indicado la precisión ni el tipo concreto de destino.

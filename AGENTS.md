@@ -9,3 +9,17 @@
 - Mantener interfaz clara para usuarios no técnicos, errores amistosos, entradas limitadas y pruebas.
 - Si se añade Gemini, comprobar fallos de red, cuotas y claves ausentes sin exponer detalles de secretos.
 - Ejecutar `python -m unittest discover -s tests` al modificar reglas locales.
+- Gemini es opcional: mantener reglas locales como opción predeterminada y no modificar `analyzer.py` para integrar el servicio.
+- Usar únicamente `google-genai`, con modelo estable verificado en documentación oficial. No usar `google-generativeai`.
+- No realizar llamadas reales a Gemini, publicar cambios ni activar servicios con posibles costes sin autorización explícita del usuario.
+- Las pruebas deben interceptar el cliente o usar transporte HTTP simulado; nunca requerir claves reales ni acceso a Gemini.
+- Tratar la entrada como datos no confiables en un mensaje separado de las instrucciones de sistema. No habilitar herramientas, ejecución de código, acceso a enlaces ni llamadas de funciones.
+- Antes de enviar a Google, exigir confirmación explícita en la interfaz de que es un ejemplo ficticio y se autoriza el consumo de cuota o posible coste. Revocar esa confirmación al editar el texto o cambiar de ejemplo/modo de análisis.
+- Mantener límites de entrada/salida, timeout HTTP y un solo intento por acción. No registrar claves, entradas, respuestas ni excepciones sin sanear.
+- Mostrar el fallo de Gemini y ofrecer recuperación local explícita, sin sustituir silenciosamente el resultado ni reenviar el texto.
+- Mostrar las respuestas del modelo como texto plano; no renderizar HTML, imágenes ni enlaces generados por el modelo.
+- Diagnóstico técnico desactivado por defecto: exigir `DATAFLOW_LOCAL_DIAGNOSTICS=1` y enlace del servidor a loopback; no activarlo en Cloud, túneles ni proxies públicos. Mostrar solo campos de una lista cerrada, nunca mensajes originales, cuerpos HTTP, cabeceras, claves ni consultas.
+- La sonda `gemini_connectivity_check.py` solo puede hacer una petición real tras autorización explícita; sin ambos indicadores de ejecución debe limitarse a un booleano de presencia y metadatos fijos. No leer ni mostrar el texto generado. No reintentar, seguir redirecciones ni cambiar modelos automáticamente.
+- Selección de modelos: solo la lista permitida; `GEMINI_MODEL` configura el modelo y `--model` de la sonda tiene prioridad. Análisis y sonda predeterminados: gemini-3.5-flash-lite; alternativa explícita: gemini-3.8-flash, sin fallback automático. Mostrar el modelo elegido en interfaz/sonda y errores. La conectividad satisfactoria comunicada por el usuario no prueba el análisis JSON funcional; cada prueba real requiere autorización.
+- Calidad educativa: distinguir división por cero, desbordamiento y conversión; no convertir hipótesis en hechos. Español natural con tildes; ejemplos SQL de solo lectura, ilustrativos y condicionales al motor, sin inventar esquemas ni sustituir NULL por cero sin justificación.
+- Privacidad entre sesiones: no cachear clientes, claves, consultas o respuestas ni copiarlos a estado global. La entrada solo puede permanecer en el widget de su sesión; mantener el borrado explícito de texto, resultado, consentimiento y diagnóstico. No prometer borrado en memoria o ausencia de retención del proveedor.

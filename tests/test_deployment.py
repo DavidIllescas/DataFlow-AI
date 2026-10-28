@@ -1,9 +1,24 @@
 """Comprueba con Git real qué archivos entrarían en la publicación."""
 from pathlib import Path
+import os
 import shutil
 import subprocess
 import tempfile
+import tomllib
 import unittest
+from unittest.mock import patch
+
+from gemini_analyzer import local_diagnostics_enabled
+
+
+class ProductionConfigTests(unittest.TestCase):
+    def test_versioned_cloud_config_keeps_diagnostics_disabled(self):
+        project = Path(__file__).resolve().parents[1]
+        config = tomllib.loads((project / '.streamlit/config.toml').read_text(encoding='utf-8'))
+        address = config.get('server', {}).get('address')
+        # Incluso un flag residual no habilita el panel con la configuración Cloud.
+        with patch.dict(os.environ, {'DATAFLOW_LOCAL_DIAGNOSTICS': '1'}):
+            self.assertFalse(local_diagnostics_enabled(address))
 
 
 @unittest.skipUnless(shutil.which('git'), 'Git no está instalado')
@@ -20,9 +35,12 @@ class DeploymentIgnoreTests(unittest.TestCase):
             'private.pem', 'private.key', 'certificate.pfx',
         ]
         public = [
-            'app.py', 'analyzer.py', 'requirements.txt', '.streamlit/config.toml',
+            'app.py', 'analyzer.py', 'gemini_analyzer.py', 'requirements.txt', '.streamlit/config.toml',
+            'gemini_connectivity_check.py', 'tests/test_connectivity_cli.py',
+            'examples/error_etl_ficticio.txt',
             'README.md', 'AGENTS.md', 'especificacion.md',
             'tests/test_analyzer.py', 'tests/test_app.py', 'tests/test_deployment.py',
+            'tests/test_gemini_analyzer.py', 'tests/test_app_gemini.py',
             '.env.example', '.env.template',
         ]
         # Solo inicializa un repositorio temporal; no cambia el proyecto ni usa red.
